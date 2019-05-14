@@ -11,10 +11,12 @@ type Server struct {
 
 // InfoServer info about server configuration with domain and know if was change
 type InfoServer struct {
+	ID               string
 	Servers          []Server
 	ServersChanged   bool
 	SslGrade         string
 	PreviousSslGrade string
 	Logo             string
 	IsDown           bool
+	LastUpdated      string
 }

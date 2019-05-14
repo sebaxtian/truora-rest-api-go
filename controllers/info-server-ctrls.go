@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
+
+	connectiondb "github.com/sebaxtian/truora-rest-api-go/db"
 
 	"github.com/likexian/whois-go"
 
@@ -68,8 +71,55 @@ func GetInfoServer() http.HandlerFunc {
 		infoServer := getInfoServer(datasslabs)
 		// Add information about server
 		infoServer.Logo = logo
+
+		// DB Operations
+		db := connectiondb.DBConnect()
+		infoServerDB := connectiondb.GetInfoServer(domain, db)
+		// fmt.Println("infoServerDB: ", infoServerDB.SslGrade)
+		// When infoServerDB not exist then create it
+		if infoServerDB.SslGrade == "" {
+			present := time.Now()
+			lastUpdated := present.Format(time.RFC3339)
+			infoServer.LastUpdated = lastUpdated
+			connectiondb.CreateInfoServer(domain, infoServer, db)
+			infoServerDB = connectiondb.GetInfoServer(domain, db)
+		} else {
+			// When infoServerDB exist then update it
+			// Validate the previous state
+			t := time.Now()
+			present, _ := time.Parse(time.RFC3339, t.Format(time.RFC3339))
+			past, _ := time.Parse(time.RFC3339, infoServerDB.LastUpdated)
+			duration := present.Sub(past)
+			fmt.Println("Present: ", present)
+			fmt.Println("Past: ", past)
+			fmt.Println("Duration: ", duration)
+			fmt.Println("Duration.Hours: ", int(duration.Hours()))
+			// fmt.Println("Duration.Minutes: ", int(duration.Minutes()))
+
+			// Only or tests
+			// if duration.Minutes() >= 0 {
+			// Only update past one hour and grade ssl changed
+			if duration.Hours() >= 0 {
+				// Past one hour, validate grade ssl if changed
+				// Only or tests
+				// infoServer.SslGrade = "C"
+				if infoServer.SslGrade != infoServerDB.PreviousSslGrade {
+					infoServer.ServersChanged = true
+					infoServer.PreviousSslGrade = infoServerDB.SslGrade
+					present := time.Now()
+					lastUpdated := present.Format(time.RFC3339)
+					infoServer.LastUpdated = lastUpdated
+				} else {
+					infoServer.ServersChanged = false
+					infoServer.PreviousSslGrade = infoServerDB.PreviousSslGrade
+					infoServer.LastUpdated = infoServerDB.LastUpdated
+				}
+				connectiondb.UpdateInfoServer(domain, infoServer, db)
+			}
+		}
+		infoServerDB = connectiondb.GetInfoServer(domain, db)
 		// fmt.Println("InfoServer: ", infoServer)
-		json.NewEncoder(w).Encode(infoServer)
+		json.NewEncoder(w).Encode(infoServerDB)
 	}
 }
 
@@ -167,7 +217,7 @@ func getInfoServer(datassllabs []byte) infoserver.InfoServer {
 		infoServer.SslGrade = minusSslgrade
 	} else {
 		// Add information about server
-		infoServer.IsDown = false
+		infoServer.IsDown = true
 		// status for api ssllabs not ready
 		fmt.Println("Status for api ssllabs not ready Domain: ", mapssllabs["status"])
 	}
